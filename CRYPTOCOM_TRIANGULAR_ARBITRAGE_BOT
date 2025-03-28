@@ -16,7 +16,7 @@ CRYPTOCOM_API_SECRET = os.getenv("CRYPTOCOM_API_SECRET")
 URL = 'https://api.crypto.com/v2/private/get-account-summary'
 
 BASE_URL = "https://api.crypto.com/exchange/v1"
-MAX_TRADE_AMOUNT = $$  # USD per trade
+MAX_TRADE_AMOUNT = 100  # 100 USD per trade
 TRADING_FEE = 0.075  # 0.75%
 CHECK_INTERVAL = 30  # seconds between checks
 
