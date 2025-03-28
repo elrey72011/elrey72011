@@ -1,0 +1,94 @@
+import os
+import requests
+import time
+import hmac
+import hashlib
+import winsound  # Windows notification sound (remove on Mac/Linux)
+from dotenv import load_dotenv
+
+# Load API keys
+load_dotenv("api_key.env")
+
+CRYPTOCOM_API_KEY = os.getenv("CRYPTOCOM_API_KEY")
+CRYPTOCOM_API_SECRET = os.getenv("CRYPTOCOM_API_SECRET")
+URL = 'https://api.crypto.com/v2/private/get-account-summary'
+
+BASE_URL = "https://api.crypto.com/exchange/v1"
+MAX_TRADE_AMOUNT =75.0  # USD per trade
+TRADING_FEE = 0.075  # 0.75%
+CHECK_INTERVAL = 30  # seconds between checks
+
+# Get tradable pairs from Crypto.com API
+def get_tradable_pairs():
+    url = f"{BASE_URL}/public/get-instruments"
+    response = requests.get(url).json()
+
+    if response.get("code") == 0:
+        pairs = [
+            p["symbol"] for p in response["result"]["data"]
+            if p["tradable"] and p["inst_type"] in ["CCY_PAIR", "PERPETUAL_SWAP"]
+        ]
+        print(f"✅ Retrieved {len(pairs)} tradable pairs: {pairs[:5]}...")  # Print first 5 pairs
+        return pairs
+    else:
+        print(f"❌ API Error: {response['code']} - {response.get('message', 'Unknown error')}")
+        return []
+
+# Get prices from Crypto.com API
+def get_prices():
+    url = f"{BASE_URL}/public/get-tickers"
+    response = requests.get(url).json()
+
+    if response.get("code") == 0:
+        prices = {item["i"]: float(item["a"]) for item in response["result"]["data"]}
+        print(f"✅ Retrieved {len(prices)} price tickers. Sample: {list(prices.items())[:5]}")  # Print first 5 prices
+        return prices
+    else:
+        print(f"❌ Price API Error: {response['code']} - {response.get('message', 'Unknown error')}")
+        return {}
+
+# Identify triangular arbitrage opportunities
+def find_triangular_arbitrage(pairs, prices):
+    symbols = [pair.split('_') for pair in pairs if "_" in pair]  # Ignore incorrectly formatted pairs
+
+    for base, inter, quote in [(a, b, c) for a in symbols for b in symbols for c in symbols]:
+        # Ensure valid pairs before accessing indices
+        if len(base) < 2 or len(inter) < 2 or len(quote) < 2:
+            continue  # Skip invalid pairs
+
+        if base[1] == inter[0] and inter[1] == quote[0] and quote[1] == base[0]:
+            try:
+                print(f"🔍 Checking: {base[0]} → {base[1]} → {inter[1]} → {base[0]}")
+
+                amt1 = MAX_TRADE_AMOUNT / prices.get(f"{base[0]}_{base[1]}", float('inf')) * (1 - TRADING_FEE)
+                amt2 = amt1 / prices.get(f"{inter[0]}_{inter[1]}", float('inf')) * (1 - TRADING_FEE)
+                final_amt = amt2 * prices.get(f"{quote[0]}_{quote[1]}", float('inf')) * (1 - TRADING_FEE)
+                profit = final_amt - MAX_TRADE_AMOUNT
+
+                profit_percent = (profit / MAX_TRADE_AMOUNT) * 100
+
+                if profit_percent > 0.05:
+                    print("\n🚨🚨🚨 ARBITRAGE OPPORTUNITY FOUND! 🚨🚨🚨")
+                    print(f"💰 Profit: ${profit:.2f} ({profit_percent:.4f}%)")
+                    print(f"🔄 Trade Path: {base[0]} → {base[1]} → {inter[1]} → {base[0]}\n")
+
+            except KeyError:
+                continue  # Skip missing price data
+
+# Main loop to continuously check for arbitrage opportunities
+def run_arbitrage_bot():
+    print("🚀 Starting Crypto.com Arbitrage Bot...")
+    while True:
+        pairs = get_tradable_pairs()
+        prices = get_prices()
+
+        if pairs and prices:
+            print(f"🔍 Checking arbitrage opportunities at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
+            find_triangular_arbitrage(pairs, prices)
+        else:
+            print("⚠️ Error fetching pairs or prices.")
+
+        time.sleep(CHECK_INTERVAL)
+
+if __name__ == "__main__":
+    run_arbitrage_bot()
